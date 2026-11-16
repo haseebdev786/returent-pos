@@ -7,10 +7,10 @@
 // keeps each role's navigation focused. Kitchen sees only Kitchen,
 // riders only Delivery; admins see everything.
 // Menu contract (labels + hrefs are shared with StaffHeader titles):
-//   Dashboard /dashboard, Counter /counter, Orders /orders,
-//   Kitchen /kitchen, Delivery /delivery, Menu /menu, Tables /tables,
-//   Customers /customers, Reports /reports, Settings /settings,
-//   Users /users.
+//   Dashboard /dashboard, New order /orders/new, Counter /counter,
+//   Orders /orders, Kitchen /kitchen, Delivery /delivery, Menu /menu,
+//   Tables /tables, Customers /customers, Reports /reports,
+//   Settings /settings, Users /users.
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
@@ -22,6 +22,7 @@ const MENU = [
     group: "Counter",
     links: [
       { label: "Dashboard", href: "/dashboard", icon: "grid", roles: ["admin", "cashier"] },
+      { label: "New order", href: "/orders/new", icon: "plus", roles: ["admin", "cashier"] },
       { label: "Counter", href: "/counter", icon: "cart", roles: ["admin", "cashier"] },
       { label: "Orders", href: "/orders", icon: "receipt", roles: ["admin", "cashier"] },
     ],

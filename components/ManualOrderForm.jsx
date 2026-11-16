@@ -623,6 +623,25 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
     <form onSubmit={handleSubmit} className="space-y-6">
       {error ? <p className="form-error">{error}</p> : null}
 
+      {/* POS layout: menu on the left, order details + cart on the
+          right, so taking an order on the restaurant PC never needs
+          scrolling past the menu to reach the cart. Stacks on small
+          screens with the menu first for the fast tap flow. */}
+      <div className="grid items-start gap-6 lg:grid-cols-[minmax(0,1fr)_360px]">
+        <section className="card card-pad space-y-3">
+          <h2 className="section-title">Menu</h2>
+          <MenuLinePicker
+            menu={menu}
+            currency={currency}
+            onAdd={addToCart}
+            lines={cart}
+            onQuickAdd={quickAddToCart}
+            onLineQty={updateQty}
+            onRemoveLine={removeLine}
+          />
+        </section>
+
+        <div className="space-y-6">
       <section className="card card-pad space-y-4">
         <h2 className="section-title">Order details</h2>
         <fieldset>
@@ -671,7 +690,7 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
           </div>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3">
           <div>
             <label htmlFor="manual-name" className="label">
               Customer name{type === "TAKEAWAY" ? " *" : ""}
@@ -732,22 +751,9 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
       </section>
 
       <section className="card card-pad space-y-3">
-        <h2 className="section-title">Menu</h2>
-        <MenuLinePicker
-          menu={menu}
-          currency={currency}
-          onAdd={addToCart}
-          lines={cart}
-          onQuickAdd={quickAddToCart}
-          onLineQty={updateQty}
-          onRemoveLine={removeLine}
-        />
-      </section>
-
-      <section className="card card-pad space-y-3">
         <h2 className="section-title">Cart ({cart.length})</h2>
         {cart.length === 0 ? (
-          <p className="form-note">No items yet — click any menu item above and it goes straight in here.</p>
+          <p className="form-note">No items yet — click any menu item and it goes straight in here.</p>
         ) : (
           <ul className="space-y-2">
             {cart.map((line) => {
@@ -823,7 +829,7 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
           </p>
         ) : null}
 
-        <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-3 sm:grid-cols-2">
+        <div className="grid grid-cols-1 gap-3 border-t border-slate-100 pt-3">
           <div>
             <label htmlFor="manual-discount" className="label">
               Discount ({currency})
@@ -885,9 +891,11 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
         </button>
         {cart.length === 0 ? (
           <p className="form-note text-center">
-            Place order stays off until the cart has an item — click any menu item above to add one.
+            Place order stays off until the cart has an item — click any menu item to add one.
           </p>
         ) : null}
+      </div>
+        </div>
       </div>
     </form>
   );
