@@ -223,6 +223,16 @@
   .pill-active {
     @apply border-brand-600 bg-brand-600 text-white hover:bg-brand-700;
   }
+
+  /* Hide the scrollbar on horizontal scroll rows (category pills)
+     while keeping them scrollable. */
+  .no-scrollbar {
+    scrollbar-width: none;
+    -ms-overflow-style: none;
+  }
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
 }
 
 /* -- Receipt ---------------------------------------------------------- */

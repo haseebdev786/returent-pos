@@ -165,6 +165,24 @@ function ItemPicker({ item, currency, onAdd, onClose }) {
         className="absolute inset-0 cursor-default bg-slate-950/50"
       />
       <div className="relative max-h-[90dvh] w-full max-w-lg overflow-y-auto rounded-t-2xl bg-white shadow-lift sm:rounded-2xl">
+        {item.imageUrl ? (
+          <div className="relative">
+            {/* eslint-disable-next-line @next/next/no-img-element */}
+            <img
+              src={item.imageUrl}
+              alt=""
+              className="h-44 w-full object-cover"
+            />
+            <button
+              type="button"
+              onClick={onClose}
+              aria-label="Close"
+              className="absolute top-3 right-3 flex h-8 w-8 cursor-pointer items-center justify-center rounded-full bg-slate-950/60 text-white"
+            >
+              <Icon name="x" className="h-5 w-5" />
+            </button>
+          </div>
+        ) : null}
         <div className="sticky top-0 flex items-start justify-between gap-3 border-b border-slate-100 bg-white px-4 py-3">
           <div className="min-w-0">
             <h2 className="text-base font-bold text-slate-900">{item.name}</h2>
@@ -264,13 +282,13 @@ function ItemPicker({ item, currency, onAdd, onClose }) {
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center gap-2">
+            <div className="flex items-center gap-1 rounded-full border border-slate-300 p-1">
               <button
                 type="button"
                 aria-label="Decrease quantity"
                 disabled={quantity <= 1}
                 onClick={() => setQuantity((q) => Math.max(1, q - 1))}
-                className="btn btn-secondary btn-sm"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 −
               </button>
@@ -282,7 +300,7 @@ function ItemPicker({ item, currency, onAdd, onClose }) {
                 aria-label="Increase quantity"
                 disabled={quantity >= 99}
                 onClick={() => setQuantity((q) => Math.min(99, q + 1))}
-                className="btn btn-secondary btn-sm"
+                className="flex h-8 w-8 cursor-pointer items-center justify-center rounded-full text-lg font-bold text-slate-700 transition-colors hover:bg-slate-100 disabled:cursor-not-allowed disabled:opacity-40"
               >
                 +
               </button>
@@ -603,14 +621,16 @@ export default function TableOrderClient({ menu, settings, table, openOrder }) {
 
   return (
     <main className="mx-auto w-full max-w-3xl px-4 pt-4 pb-28">
-      <header className="text-center">
-        <p className="text-xs font-semibold tracking-widest text-brand-600 uppercase">
+      <header className="overflow-hidden rounded-2xl bg-linear-to-br from-brand-600 via-brand-700 to-brand-800 px-5 py-6 text-center text-white shadow-lift">
+        <p className="text-xs font-bold tracking-[0.2em] text-brand-100 uppercase">
           {settings.restaurantName}
         </p>
-        <h1 className="mt-1 text-2xl font-bold tracking-tight text-slate-900">
-          {table.name}
-        </h1>
-        <p className="page-desc">
+        <h1 className="mt-1 text-3xl font-bold tracking-tight">{table.name}</h1>
+        <p className="mt-2 inline-flex items-center gap-1.5 rounded-full bg-white/15 px-3 py-1 text-sm font-medium">
+          <Icon name="table" className="h-4 w-4" />
+          Table {table.code} · {table.seats} seats
+        </p>
+        <p className="mt-3 text-sm text-brand-100">
           Order from your table — items are added to one running bill.
         </p>
       </header>
@@ -778,21 +798,32 @@ export default function TableOrderClient({ menu, settings, table, openOrder }) {
       ) : null}
 
       <div className="sticky top-0 z-10 -mx-4 bg-slate-100/95 px-4 pt-3 pb-2 backdrop-blur">
-        <input
-          type="search"
-          value={query}
-          onChange={(event) => setQuery(event.target.value)}
-          className="input"
-          placeholder="Search the menu…"
-          aria-label="Search the menu"
-        />
-        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+        <div className="relative">
+          <Icon
+            name="search"
+            className="pointer-events-none absolute top-1/2 left-3 h-4 w-4 -translate-y-1/2 text-slate-400"
+          />
+          <input
+            type="search"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            className="input rounded-full pr-4 pl-9"
+            placeholder="Search the menu…"
+            aria-label="Search the menu"
+          />
+        </div>
+        <div className="no-scrollbar mt-2 flex gap-2 overflow-x-auto pb-1">
           <button
             type="button"
             onClick={() => setActiveCategory("all")}
             className={`pill ${activeCategory === "all" ? "pill-active" : ""}`}
           >
             All
+            <span
+              className={`ml-1.5 rounded-full px-1.5 py-px text-xs font-semibold ${activeCategory === "all" ? "bg-white/25" : "bg-slate-100 text-slate-500"}`}
+            >
+              {menu.reduce((count, c) => count + c.items.length, 0)}
+            </span>
           </button>
           {menu.map((category) => (
             <button
@@ -802,43 +833,52 @@ export default function TableOrderClient({ menu, settings, table, openOrder }) {
               className={`pill ${activeCategory === category.id ? "pill-active" : ""}`}
             >
               {category.name}
+              <span
+                className={`ml-1.5 rounded-full px-1.5 py-px text-xs font-semibold ${activeCategory === category.id ? "bg-white/25" : "bg-slate-100 text-slate-500"}`}
+              >
+                {category.items.length}
+              </span>
             </button>
           ))}
         </div>
       </div>
 
       {visibleCategories.length === 0 ? (
-        <p className="mt-8 text-center text-sm text-slate-600">
-          {menu.length === 0
-            ? "The menu is empty right now. Please ask the staff."
-            : "No items match your search."}
-        </p>
+        <div className="mt-6 flex flex-col items-center px-4 py-10 text-center">
+          <span className="icon-chip icon-chip-slate">
+            <Icon name="search" />
+          </span>
+          <p className="mt-3 text-sm text-slate-600">
+            {menu.length === 0
+              ? "The menu is empty right now. Please ask the staff."
+              : "No items match your search."}
+          </p>
+        </div>
       ) : null}
 
       {visibleCategories.map((category) => (
-        <section key={category.id} className="mt-4">
-          <h2 className="section-title">{category.name}</h2>
-          <ul className="mt-2 space-y-2">
+        <section key={category.id} className="mt-6">
+          <div className="flex items-center gap-3">
+            <h2 className="text-lg font-bold tracking-tight text-slate-900">
+              {category.name}
+            </h2>
+            <span className="h-px flex-1 bg-slate-200" />
+            <span className="text-xs font-medium whitespace-nowrap text-slate-500">
+              {category.items.length} item{category.items.length === 1 ? "" : "s"}
+            </span>
+          </div>
+          <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {category.items.map((item) => (
               <li key={item.id}>
                 <button
                   type="button"
                   disabled={item.isSoldOut}
                   onClick={() => setPickerItem(item)}
-                  className="card flex w-full cursor-pointer items-center gap-3 p-3 text-left disabled:cursor-not-allowed disabled:opacity-60"
+                  className="card flex w-full cursor-pointer items-stretch gap-3 p-3 text-left transition-shadow hover:shadow-lift disabled:cursor-not-allowed disabled:opacity-60"
                 >
-                  {item.imageUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element
-                    <img
-                      src={item.imageUrl}
-                      alt=""
-                      loading="lazy"
-                      className="h-14 w-14 shrink-0 rounded-lg object-cover"
-                    />
-                  ) : null}
-                  <span className="min-w-0 flex-1">
-                    <span className="flex items-center gap-2">
-                      <span className="truncate font-semibold text-slate-900">
+                  <span className="min-w-0 flex-1 py-0.5">
+                    <span className="flex min-w-0 items-center gap-2">
+                      <span className="line-clamp-2 min-w-0 font-semibold text-slate-900">
                         {item.name}
                       </span>
                       {item.isSoldOut ? (
@@ -846,19 +886,43 @@ export default function TableOrderClient({ menu, settings, table, openOrder }) {
                       ) : null}
                     </span>
                     {item.description ? (
-                      <span className="block truncate text-sm text-slate-600">
+                      <span className="mt-0.5 line-clamp-2 block text-sm leading-snug text-slate-600">
                         {item.description}
                       </span>
                     ) : null}
-                    <span className="mt-0.5 block text-sm font-semibold text-brand-700">
-                      {formatPKR(item.price, currency)}
-                      {item.variants.length > 0 ? " · options" : ""}
+                    <span className="mt-1.5 flex flex-wrap items-center gap-2">
+                      <span className="text-[15px] font-bold text-brand-700">
+                        {formatPKR(item.price, currency)}
+                      </span>
+                      {item.variants.length > 0 ? (
+                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                          {item.variants.length} option
+                          {item.variants.length === 1 ? "" : "s"}
+                        </span>
+                      ) : null}
                     </span>
                   </span>
-                  <Icon
-                    name="plus"
-                    className="h-5 w-5 shrink-0 text-slate-400"
-                  />
+                  <span className="flex shrink-0 flex-col items-end justify-between gap-2">
+                    {item.imageUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element
+                      <img
+                        src={item.imageUrl}
+                        alt=""
+                        loading="lazy"
+                        className="h-20 w-20 rounded-xl object-cover"
+                      />
+                    ) : (
+                      <span className="flex h-20 w-20 items-center justify-center rounded-xl bg-linear-to-br from-brand-100 to-brand-200 text-brand-600">
+                        <Icon name="food" className="h-8 w-8" />
+                      </span>
+                    )}
+                    {!item.isSoldOut ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                        <Icon name="plus" className="h-3.5 w-3.5" />
+                        Add
+                      </span>
+                    ) : null}
+                  </span>
                 </button>
               </li>
             ))}
@@ -871,9 +935,10 @@ export default function TableOrderClient({ menu, settings, table, openOrder }) {
           <button
             type="button"
             onClick={() => setCartOpen(true)}
-            className="btn btn-primary btn-lg mx-auto flex w-full max-w-3xl justify-between shadow-lift"
+            className="mx-auto flex w-full max-w-3xl cursor-pointer items-center justify-between rounded-full bg-brand-600 px-5 py-3 text-base font-semibold text-white shadow-lift transition-colors hover:bg-brand-700"
           >
-            <span>
+            <span className="flex items-center gap-2">
+              <Icon name="cart" className="h-5 w-5" />
               View cart · {cartCount} item{cartCount === 1 ? "" : "s"}
             </span>
             <span>{formatPKR(estimate.grandTotal, currency)}</span>
