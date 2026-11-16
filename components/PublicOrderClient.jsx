@@ -352,9 +352,7 @@ export default function PublicOrderClient({ menu, settings }) {
     customerPhone.trim().length > 0 &&
     (orderType !== "DELIVERY" || deliveryAddress.trim().length > 0);
 
-  function addToCart(selection) {
-    const item = pickerItem;
-    if (!item) return;
+  function addLine(item, selection) {
     const variant =
       item.variants.find((v) => v.id === selection.variantId) ?? null;
     const addons = [];
@@ -394,7 +392,41 @@ export default function PublicOrderClient({ menu, settings }) {
       }
       return [...prev, line];
     });
+  }
+
+  function addToCart(selection) {
+    const item = pickerItem;
+    if (!item) return;
+    addLine(item, selection);
     setPickerItem(null);
+    setError("");
+  }
+
+  // Simple items (no variants, no addon groups) skip the picker: the
+  // card's Add button puts them straight in the cart, and the stepper
+  // adjusts the quantity. The key matches addLine's key for the same
+  // plain selection, so quick-added and picker-added lines merge.
+  function isSimpleItem(item) {
+    return item.variants.length === 0 && item.addonGroups.length === 0;
+  }
+
+  function simpleLineKey(item) {
+    return [item.id, 0, "", ""].join("|");
+  }
+
+  function cartQtyFor(item) {
+    const line = cart.find((l) => l.key === simpleLineKey(item));
+    return line ? line.quantity : 0;
+  }
+
+  function quickAdd(item) {
+    addLine(item, {
+      menuItemId: item.id,
+      variantId: null,
+      addonIds: [],
+      quantity: 1,
+      note: "",
+    });
     setError("");
   }
 
@@ -605,13 +637,15 @@ export default function PublicOrderClient({ menu, settings }) {
           <ul className="mt-3 grid gap-3 sm:grid-cols-2">
             {category.items.map((item) => (
               <li key={item.id}>
-                <button
-                  type="button"
-                  disabled={item.isSoldOut}
-                  onClick={() => setPickerItem(item)}
-                  className="card flex w-full cursor-pointer items-stretch gap-3 p-3 text-left transition-shadow hover:shadow-lift disabled:cursor-not-allowed disabled:opacity-60"
+                <div
+                  className={`card flex w-full items-stretch gap-3 p-3 transition-shadow hover:shadow-lift ${item.isSoldOut ? "opacity-60" : ""}`}
                 >
-                  <span className="min-w-0 flex-1 py-0.5">
+                  <button
+                    type="button"
+                    disabled={item.isSoldOut}
+                    onClick={() => setPickerItem(item)}
+                    className="min-w-0 flex-1 cursor-pointer py-0.5 text-left disabled:cursor-not-allowed"
+                  >
                     <span className="flex min-w-0 items-center gap-2">
                       <span className="line-clamp-2 min-w-0 font-semibold text-slate-900">
                         {item.name}
@@ -636,7 +670,7 @@ export default function PublicOrderClient({ menu, settings }) {
                         </span>
                       ) : null}
                     </span>
-                  </span>
+                  </button>
                   <span className="flex shrink-0 flex-col items-end justify-between gap-2">
                     {item.imageUrl ? (
                       // eslint-disable-next-line @next/next/no-img-element
@@ -651,14 +685,50 @@ export default function PublicOrderClient({ menu, settings }) {
                         <Icon name="food" className="h-8 w-8" />
                       </span>
                     )}
-                    {!item.isSoldOut ? (
-                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm">
+                    {item.isSoldOut ? null : isSimpleItem(item) &&
+                      cartQtyFor(item) > 0 ? (
+                      <span className="inline-flex items-center gap-1 rounded-full bg-brand-600 p-1 text-white shadow-sm">
+                        <button
+                          type="button"
+                          aria-label="Decrease quantity"
+                          onClick={() =>
+                            changeQuantity(simpleLineKey(item), -1)
+                          }
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-base leading-none font-bold hover:bg-brand-700"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center text-sm font-bold">
+                          {cartQtyFor(item)}
+                        </span>
+                        <button
+                          type="button"
+                          aria-label="Increase quantity"
+                          disabled={cartQtyFor(item) >= 99}
+                          onClick={() =>
+                            changeQuantity(simpleLineKey(item), 1)
+                          }
+                          className="flex h-6 w-6 cursor-pointer items-center justify-center rounded-full text-base leading-none font-bold hover:bg-brand-700 disabled:cursor-not-allowed disabled:opacity-50"
+                        >
+                          +
+                        </button>
+                      </span>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          isSimpleItem(item)
+                            ? quickAdd(item)
+                            : setPickerItem(item)
+                        }
+                        className="inline-flex cursor-pointer items-center gap-1 rounded-full bg-brand-600 px-3 py-1 text-xs font-bold text-white shadow-sm transition-colors hover:bg-brand-700"
+                      >
                         <Icon name="plus" className="h-3.5 w-3.5" />
                         Add
-                      </span>
-                    ) : null}
+                      </button>
+                    )}
                   </span>
-                </button>
+                </div>
               </li>
             ))}
           </ul>

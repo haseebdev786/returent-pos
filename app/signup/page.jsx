@@ -15,6 +15,7 @@ import { authClient } from "@/lib/auth-client";
 function homeForRole(role) {
   if (role === "kitchen") return "/kitchen";
   if (role === "rider") return "/delivery";
+  if (role === "cashier") return "/counter";
   return "/dashboard";
 }
 

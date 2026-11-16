@@ -5,10 +5,11 @@
 // page wraps AppShell itself. Loads every table with its open order
 // summary (order number / status / running total).
 
+import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
 import { PageHeader } from "@/components/ui";
-import { getCurrentUser, hasRole } from "@/lib/session";
+import { getCurrentUser, hasRole, homeForRole, homeLabelForRole } from "@/lib/session";
 import { prisma } from "@/lib/prisma";
 import { getSettings } from "@/lib/settings-data";
 import TablesAdminClient from "@/components/TablesAdminClient";
@@ -19,6 +20,8 @@ export default async function TablesPage() {
   const shellUser = { name: user.name, email: user.email, role: user.role };
 
   if (!hasRole(user, ["admin", "cashier"])) {
+    const homeHref = homeForRole(user.role);
+    const homeLabel = homeLabelForRole(user.role);
     return (
       <AppShell user={shellUser}>
         <PageHeader
@@ -27,6 +30,11 @@ export default async function TablesPage() {
         />
         <p className="form-error mt-4">
           Your role cannot view tables. Ask an admin or cashier for help.
+        </p>
+        <p className="mt-4">
+          <Link href={homeHref} className="btn btn-primary">
+            Go to {homeLabel}
+          </Link>
         </p>
       </AppShell>
     );

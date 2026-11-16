@@ -9,7 +9,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import AppShell from "@/components/AppShell";
-import { getCurrentUser, hasRole, ROLE_LABELS } from "@/lib/session";
+import { getCurrentUser, hasRole, homeForRole, homeLabelForRole, ROLE_LABELS } from "@/lib/session";
 import { getSettings } from "@/lib/settings-data";
 import { EmptyState, PageHeader } from "@/components/ui";
 import SettingsForm from "@/components/SettingsForm";
@@ -20,18 +20,8 @@ export default async function SettingsPage() {
   const shellUser = { name: user.name, email: user.email, role: user.role };
 
   if (!hasRole(user, "admin")) {
-    const homeHref =
-      user.role === "kitchen"
-        ? "/kitchen"
-        : user.role === "rider"
-          ? "/delivery"
-          : "/dashboard";
-    const homeLabel =
-      user.role === "kitchen"
-        ? "Kitchen display"
-        : user.role === "rider"
-          ? "Delivery"
-          : "Dashboard";
+    const homeHref = homeForRole(user.role);
+    const homeLabel = homeLabelForRole(user.role);
     return (
       <AppShell user={shellUser}>
         <div className="space-y-4">

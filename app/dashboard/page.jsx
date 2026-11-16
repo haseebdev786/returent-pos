@@ -13,7 +13,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { prisma } from "@/lib/prisma";
-import { getCurrentUser, hasRole, ROLE_LABELS } from "@/lib/session";
+import { getCurrentUser, hasRole, homeForRole, homeLabelForRole, ROLE_LABELS } from "@/lib/session";
 import { getSettings } from "@/lib/settings-data";
 import {
   formatDate,
@@ -64,18 +64,8 @@ export default async function DashboardPage() {
   // Role gate BEFORE any data fetch: kitchen/rider see the message
   // inside the shell (provided by the layout) and nothing else.
   if (!hasRole(user, ["admin", "cashier"])) {
-    const homeHref =
-      user.role === "kitchen"
-        ? "/kitchen"
-        : user.role === "rider"
-          ? "/delivery"
-          : "/dashboard";
-    const homeLabel =
-      user.role === "kitchen"
-        ? "Kitchen display"
-        : user.role === "rider"
-          ? "Delivery"
-          : "Dashboard";
+    const homeHref = homeForRole(user.role);
+    const homeLabel = homeLabelForRole(user.role);
     return (
       <div className="space-y-4">
         <PageHeader
@@ -108,6 +98,12 @@ export default async function DashboardPage() {
     todayStart.getMonth(),
     todayStart.getDate() - 29,
   );
+  // Last 7 days including today, for the sales strip.
+  const sevenDaysAgo = new Date(
+    todayStart.getFullYear(),
+    todayStart.getMonth(),
+    todayStart.getDate() - 6,
+  );
 
   const [
     todaySummary,
@@ -120,6 +116,7 @@ export default async function DashboardPage() {
     totalTables,
     occupiedTables,
     recentOrders,
+    weekOrders,
   ] = await Promise.all([
     getSalesSummary(prisma, todayStart, tomorrowStart),
     getTypeBreakdown(prisma, todayStart, tomorrowStart),
@@ -169,6 +166,13 @@ export default async function DashboardPage() {
         table: { select: { code: true } },
       },
     }),
+    prisma.order.findMany({
+      where: {
+        status: "COMPLETED",
+        createdAt: { gte: sevenDaysAgo, lt: tomorrowStart },
+      },
+      select: { grandTotal: true, createdAt: true },
+    }),
   ]);
 
   // Resolve the denormalised currentOrderId pointers to order numbers
@@ -186,6 +190,31 @@ export default async function DashboardPage() {
   const orderNumberById = new Map(
     linkedOrders.map((order) => [order.id, order.orderNumber]),
   );
+
+  // Last 7 days of completed sales, bucketed by local day for the strip.
+  const WEEKDAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+  const dayKey = (d) =>
+    `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const weekTotals = new Map();
+  for (const order of weekOrders) {
+    const key = dayKey(order.createdAt);
+    weekTotals.set(key, (weekTotals.get(key) ?? 0) + order.grandTotal);
+  }
+  const weekDays = [];
+  for (let i = 6; i >= 0; i -= 1) {
+    const d = new Date(
+      todayStart.getFullYear(),
+      todayStart.getMonth(),
+      todayStart.getDate() - i,
+    );
+    weekDays.push({
+      key: dayKey(d),
+      label: `${WEEKDAY[d.getDay()]} ${d.getDate()}`,
+      total: weekTotals.get(dayKey(d)) ?? 0,
+      isToday: i === 0,
+    });
+  }
+  const weekMax = Math.max(1, ...weekDays.map((d) => d.total));
 
   return (
     <div className="space-y-4">
@@ -266,9 +295,11 @@ export default async function DashboardPage() {
         <Link href="/reports" className="btn btn-secondary">
           Reports
         </Link>
-        <Link href="/kitchen" className="btn btn-secondary">
-          Kitchen display
-        </Link>
+        {hasRole(user, "admin") ? (
+          <Link href="/kitchen" className="btn btn-secondary">
+            Kitchen display
+          </Link>
+        ) : null}
       </nav>
 
       <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -341,6 +372,37 @@ export default async function DashboardPage() {
           )}
         </section>
       </div>
+
+      <section className="card card-pad">
+        <h2 className="section-title">Sales · last 7 days</h2>
+        <p className="section-desc">
+          Completed bills only, by day. Today is highlighted.
+        </p>
+        <ul className="mt-4 space-y-2.5">
+          {weekDays.map((day) => (
+            <li key={day.key} className="flex items-center gap-3 text-sm">
+              <span
+                className={`w-14 shrink-0 ${day.isToday ? "font-bold text-slate-900" : "text-slate-600"}`}
+              >
+                {day.label}
+              </span>
+              <span className="h-5 min-w-0 flex-1 overflow-hidden rounded-full bg-slate-100">
+                <span
+                  className={`block h-full rounded-full ${day.isToday ? "bg-brand-600" : "bg-brand-300"}`}
+                  style={{
+                    width: `${day.total > 0 ? Math.max(4, Math.round((day.total / weekMax) * 100)) : 0}%`,
+                  }}
+                />
+              </span>
+              <span
+                className={`w-24 shrink-0 text-right font-medium ${day.isToday ? "text-slate-900" : "text-slate-700"}`}
+              >
+                {formatPKR(day.total, currency)}
+              </span>
+            </li>
+          ))}
+        </ul>
+      </section>
 
       <section className="card card-pad">
         <h2 className="section-title">Top items · last 30 days</h2>

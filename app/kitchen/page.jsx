@@ -1,6 +1,6 @@
 // SAVE AS: app/kitchen/page.jsx
 // Kitchen display page. Server-rendered shell; roles admin, kitchen
-// only (cashiers are redirected to /dashboard, riders to /delivery).
+// only (cashiers are redirected to /counter, riders to /delivery).
 // Kitchen staff land here after login (see app/login/page.jsx). The live board is the
 // client component/KitchenBoard.jsx, which polls /api/kitchen — the
 // page itself loads no order data, so the board is always fresh.
@@ -15,7 +15,7 @@ export default async function KitchenPage() {
   const user = await getCurrentUser();
   if (!user) redirect("/login");
   if (user.role === "rider") redirect("/delivery");
-  if (user.role === "cashier") redirect("/dashboard");
+  if (user.role === "cashier") redirect("/counter");
   if (!["admin", "kitchen"].includes(user.role)) redirect("/login");
 
   const shellUser = { name: user.name, email: user.email, role: user.role };

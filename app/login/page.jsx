@@ -3,8 +3,8 @@
 
 // Staff login. No shell — centered brand card. After sign-in the session
 // is re-read to get the database role, then staff land on their home:
-// kitchen -> /kitchen, rider -> /delivery, everyone else -> /dashboard.
-// Real error messages are shown; nothing is masked.
+// kitchen -> /kitchen, rider -> /delivery, cashier -> /counter,
+// admin -> /dashboard. Real error messages are shown; nothing is masked.
 
 import { useState } from "react";
 import Link from "next/link";
@@ -14,6 +14,7 @@ import { authClient } from "@/lib/auth-client";
 function homeForRole(role) {
   if (role === "kitchen") return "/kitchen";
   if (role === "rider") return "/delivery";
+  if (role === "cashier") return "/counter";
   return "/dashboard";
 }
 
