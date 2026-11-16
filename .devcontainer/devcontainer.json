@@ -1,0 +1,1 @@
+{"customizations":{"vscode":{"extensions":["Prisma.prisma"]}},"forwardPorts":[3000],"image":"mcr.microsoft.com/devcontainers/javascript-node:22","name":"Restaurant POS","portsAttributes":{"3000":{"label":"Restaurant POS","onAutoForward":"openBrowser"}},"postCreateCommand":"npm install && (npx prisma generate || true)"}
