@@ -1,0 +1,385 @@
+// SAVE AS: prisma/schema.prisma
+// Restaurant POS — PostgreSQL (hosted, e.g. Neon) + Prisma 6.
+// Money is ALWAYS Int (whole PKR). NEVER Decimal — no paisa amounts exist
+// in this app and integer math avoids rounding drift in totals.
+//
+// ORDER NUMBERS: format R-YYYYMMDD-NNNN (e.g. R-20261116-0007), issued
+// from DailyOrderCounter inside a Prisma transaction (see
+// lib/order-number.js). The counter row for the local date is locked by
+// the enclosing transaction, so concurrent checkouts cannot reuse a
+// number. Numbers reset daily (NNNN restarts at 0001 each local day).
+//
+// TOTALS SHAPE (see lib/menu-data.js computeTotals): every order stores
+// { subtotal, discount, tax, serviceCharge, deliveryFee, grandTotal }.
+// Tax and service charge are SEPARATE fields — service charge is never
+// folded into tax. Applied-rate snapshots (taxRateApplied,
+// serviceChargeRateApplied, deliveryFeeApplied) freeze the Settings in
+// force at order time so later Settings edits never rewrite history.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider  = "postgresql"
+  url       = env("DATABASE_URL")
+  directUrl = env("DIRECT_URL")
+}
+
+// ---------------------------------------------------------------------------
+// Better Auth models — field names are EXACT Better Auth v1 Prisma names.
+// Do not rename fields; the Better Auth Prisma adapter expects them.
+// ---------------------------------------------------------------------------
+
+model User {
+  id            String    @id
+  name          String
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+  sessions      Session[]
+  accounts      Account[]
+
+  // App fields (not part of Better Auth core).
+  role     String  @default("cashier") // admin | cashier | kitchen | rider
+  isActive Boolean @default(true)
+
+  paymentsReceived  Payment[] @relation("PaymentReceiver")
+  assignedDeliveries Order[]   @relation("OrderRider")
+}
+
+model Session {
+  id        String   @id
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Account {
+  id                    String    @id
+  accountId             String
+  providerId            String
+  userId                String
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+model Verification {
+  id         String   @id
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+}
+
+// ---------------------------------------------------------------------------
+// Enums
+// ---------------------------------------------------------------------------
+
+enum OrderType {
+  DINE_IN
+  TAKEAWAY
+  DELIVERY
+}
+
+enum OrderStatus {
+  RECEIVED
+  PREPARING
+  READY
+  OUT_FOR_DELIVERY
+  COMPLETED
+  CANCELLED
+}
+
+enum BatchStatus {
+  RECEIVED
+  PREPARING
+  READY
+}
+
+// A batch never carries OUT_FOR_DELIVERY/COMPLETED/CANCELLED — those are
+// order-level states only. Order status is derived from batches by
+// lib/order-status.js, except sticky states (see that file).
+enum PaymentStatus {
+  UNPAID
+  PAID
+  REFUNDED
+}
+
+enum PaymentMethod {
+  CASH
+  CARD
+  JAZZCASH
+  EASYPAISA
+  COD
+}
+
+enum TableStatus {
+  FREE
+  OCCUPIED
+}
+
+// ---------------------------------------------------------------------------
+// Menu
+// ---------------------------------------------------------------------------
+
+model Category {
+  id        Int        @id @default(autoincrement())
+  name      String
+  sortOrder Int        @default(0)
+  isActive  Boolean    @default(true)
+  items     MenuItem[]
+}
+
+model MenuItem {
+  id          Int      @id @default(autoincrement())
+  categoryId  Int
+  category    Category @relation(fields: [categoryId], references: [id])
+  name        String
+  description String?
+  price       Int // Whole PKR.
+  imageUrl    String?
+  isActive    Boolean  @default(true)
+  isSoldOut   Boolean  @default(false)
+  sortOrder   Int      @default(0)
+
+  variants    MenuItemVariant[]
+  addonGroups MenuItemAddonGroup[]
+  orderItems  OrderItem[]
+
+  @@index([categoryId, isActive])
+}
+
+model MenuItemVariant {
+  id         Int      @id @default(autoincrement())
+  menuItemId Int
+  menuItem   MenuItem @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  name       String // e.g. Small, Large, Half, Full.
+  priceDelta Int      @default(0) // Added to the item base price; may be 0.
+  sortOrder  Int      @default(0)
+}
+
+model AddonGroup {
+  id        Int      @id @default(autoincrement())
+  name      String // e.g. Extra Cheese.
+  required  Boolean  @default(false)
+  maxSelect Int      @default(1)
+  addons    Addon[]
+  menuItems MenuItemAddonGroup[]
+}
+
+model Addon {
+  id      Int        @id @default(autoincrement())
+  groupId Int
+  group   AddonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  name    String
+  price   Int // Whole PKR, added per ordered item.
+}
+
+model MenuItemAddonGroup {
+  id         Int        @id @default(autoincrement())
+  menuItemId Int
+  groupId    Int
+  menuItem   MenuItem   @relation(fields: [menuItemId], references: [id], onDelete: Cascade)
+  group      AddonGroup @relation(fields: [groupId], references: [id], onDelete: Cascade)
+
+  @@unique([menuItemId, groupId])
+}
+
+// ---------------------------------------------------------------------------
+// Tables + daily order counter
+// ---------------------------------------------------------------------------
+
+model Table {
+  id             Int         @id @default(autoincrement())
+  code           String      @unique // e.g. T1 — used in the QR URL /t/T1.
+  name           String // e.g. Table 1.
+  seats          Int         @default(4)
+  isActive       Boolean     @default(true)
+  status         TableStatus @default(FREE)
+  // Denormalised pointer to the open dine-in order, NOT a foreign key:
+  // a real FK here would create a Table <-> Order relation cycle.
+  currentOrderId Int?        @unique
+  orders         Order[]
+
+  @@index([code])
+}
+
+model DailyOrderCounter {
+  dateKey    String @id // Local YYYY-MM-DD, e.g. 2026-11-16.
+  lastNumber Int    @default(0)
+}
+
+// ---------------------------------------------------------------------------
+// Orders
+// ---------------------------------------------------------------------------
+
+model Order {
+  id           Int         @id @default(autoincrement())
+  orderNumber  String      @unique // R-YYYYMMDD-NNNN, see header comment.
+  type         OrderType
+  status       OrderStatus @default(RECEIVED)
+  tableId      Int?
+  table        Table?      @relation(fields: [tableId], references: [id])
+
+  customerName    String?
+  customerPhone   String?
+  deliveryAddress String?
+
+  // Unguessable token in the customer tracking link. Never sequential.
+  accessToken String  @unique
+  // Client-supplied key for safe checkout retries; one order per key.
+  idempotencyKey String? @unique
+
+  // Money snapshots — whole PKR. Prices/rates are frozen at order time.
+  subtotal               Int @default(0)
+  discount               Int @default(0)
+  tax                    Int @default(0)
+  serviceCharge          Int @default(0)
+  deliveryFee            Int @default(0)
+  grandTotal             Int @default(0)
+  taxRateApplied         Int @default(0) // Percent snapshot from Settings.
+  serviceChargeRateApplied Int @default(0) // Percent snapshot from Settings.
+  deliveryFeeApplied     Int @default(0) // Flat-fee snapshot from Settings.
+  discountReason         String?
+
+  paymentStatus PaymentStatus @default(UNPAID)
+
+  riderId String?
+  rider   User?   @relation("OrderRider", fields: [riderId], references: [id])
+
+  waiterCalledAt   DateTime?
+  billRequestedAt  DateTime?
+  cancelledReason  String?
+  notes            String?
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  batches  OrderBatch[]
+  items    OrderItem[]
+  payments Payment[]
+
+  @@index([status, createdAt])
+  @@index([tableId, status])
+  @@index([accessToken])
+}
+
+model OrderBatch {
+  id          Int         @id @default(autoincrement())
+  orderId     Int
+  order       Order       @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  batchNumber Int // 1 for the first checkout, 2+ for later "add items".
+  status      BatchStatus @default(RECEIVED)
+  createdAt   DateTime    @default(now())
+
+  items OrderItem[]
+
+  @@unique([orderId, batchNumber])
+  @@index([orderId])
+}
+
+model OrderItem {
+  id          Int        @id @default(autoincrement())
+  batchId     Int
+  batch       OrderBatch @relation(fields: [batchId], references: [id], onDelete: Cascade)
+  orderId     Int
+  order       Order      @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  menuItemId  Int?
+  menuItem    MenuItem?  @relation(fields: [menuItemId], references: [id])
+
+  // Snapshots — the name/price as charged, even if the menu later changes.
+  itemName    String
+  variantName String?
+  unitPrice   Int // Base price + variant delta, whole PKR.
+  quantity    Int
+  note        String?
+  lineTotal   Int // (unitPrice + addon prices) * quantity, whole PKR.
+
+  addons OrderItemAddon[]
+
+  @@index([orderId])
+}
+
+model OrderItemAddon {
+  id          Int       @id @default(autoincrement())
+  orderItemId Int
+  orderItem   OrderItem @relation(fields: [orderItemId], references: [id], onDelete: Cascade)
+  addonName   String // Snapshot of the addon name.
+  price       Int // Snapshot of the addon price, whole PKR, per item.
+}
+
+// ---------------------------------------------------------------------------
+// Payments
+// ---------------------------------------------------------------------------
+
+model Payment {
+  id      Int           @id @default(autoincrement())
+  orderId Int
+  order   Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  method  PaymentMethod
+  status  PaymentStatus @default(PAID)
+  amount  Int // Whole PKR.
+  reference String?
+
+  // Gateway fields are reserved for a future online-payment plugin.
+  // V1 takes counter/cash payments only; these stay null until then.
+  gateway         String?
+  gatewayOrderId  String?
+  gatewayPaymentId String?
+  gatewayStatus   String?
+
+  receivedById String?
+  receivedBy   User?   @relation("PaymentReceiver", fields: [receivedById], references: [id])
+
+  createdAt DateTime @default(now())
+}
+
+// ---------------------------------------------------------------------------
+// Settings (single row, id = 1) + customers
+// ---------------------------------------------------------------------------
+
+model Setting {
+  id                    Int      @id @default(1)
+  restaurantName        String
+  address               String?
+  phone                 String?
+  currency              String   @default("Rs")
+  taxRate               Int      @default(0) // Percent, e.g. 5 = 5%.
+  taxEnabled            Boolean  @default(false)
+  serviceChargeRate     Int      @default(0) // Percent.
+  serviceChargeEnabled  Boolean  @default(false)
+  deliveryFee           Int      @default(0) // Whole PKR.
+  freeDeliveryThreshold Int      @default(0) // Whole PKR; 0 = never free.
+  minOrderAmount        Int      @default(0) // Whole PKR; 0 = no minimum.
+  publicUrl             String?
+  receiptFooter         String?
+  updatedAt             DateTime @updatedAt
+}
+
+model Customer {
+  id          Int      @id @default(autoincrement())
+  phone       String   @unique
+  name        String?
+  address     String?
+  totalOrders Int      @default(0)
+  totalSpent  Int      @default(0) // Whole PKR, lifetime.
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+}
