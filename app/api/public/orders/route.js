@@ -48,6 +48,7 @@ import {
   buildOrderTotals,
   priceOrderLines,
 } from "@/lib/order-create";
+import { withDbRetry } from "@/lib/db-retry";
 
 const OPEN_STATUSES = ["RECEIVED", "PREPARING", "READY"];
 const MAX_NAME_LENGTH = 100;
@@ -186,9 +187,13 @@ export async function POST(request) {
       }
     }
 
-    const settings = await getSettings();
-
-    const result = await prisma.$transaction(async (tx) => {
+    // Same transient-DB retry as the staff route: Neon sleep/wake can
+    // fail the first attempt with a dead pooled connection. The whole
+    // transaction rolls back on failure, so retrying cannot duplicate
+    // the order (and the idempotency key guards retried checkouts too).
+    const result = await withDbRetry(async () => {
+      const settings = await getSettings();
+      return prisma.$transaction(async (tx) => {
       // Authoritative open-order check inside the transaction.
       if (type === "DINE_IN") {
         const existing = await findOpenOrderForTable(tx, table.id);
@@ -294,6 +299,7 @@ export async function POST(request) {
       }
 
       return orderSummary(order);
+      });
     });
 
     if (result.needsAppend) return Response.json(result);

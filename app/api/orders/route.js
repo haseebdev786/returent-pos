@@ -42,6 +42,7 @@ import { getCurrentUser, hasRole } from "@/lib/session";
 import { getSettings } from "@/lib/settings-data";
 import { buildOrderTotals, priceOrderLines } from "@/lib/order-create";
 import { nextOrderNumber } from "@/lib/order-number";
+import { withDbRetry } from "@/lib/db-retry";
 import { roundMoney, formatPKR } from "@/lib/format";
 
 const STAFF_ROLES = ["admin", "cashier"];
@@ -206,11 +207,16 @@ export async function POST(request) {
     );
   }
 
-  const settings = await getSettings();
-
   let createdId;
   try {
-    createdId = await prisma.$transaction(async (tx) => {
+    // Neon sleeps after a few idle minutes and the first query can hit
+    // a dead pooled connection; retry the whole attempt (settings read
+    // + transaction) so one click succeeds instead of needing 2-3. A
+    // failed transaction rolls back completely, so retrying cannot
+    // create a duplicate order. Validation errors are never retried.
+    createdId = await withDbRetry(async () => {
+      const settings = await getSettings();
+      return prisma.$transaction(async (tx) => {
       // Dine-in table checks run inside the transaction so two counters
       // cannot seat two open orders on the same table.
       let table = null;
@@ -354,6 +360,7 @@ export async function POST(request) {
       }
 
       return order.id;
+      });
     });
   } catch (err) {
     if (err?.isValidation || err?.code === "ORDER_VALIDATION") {
