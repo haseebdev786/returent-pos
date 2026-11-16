@@ -6,7 +6,12 @@
 //
 // MenuLinePicker (named export): category pills, item list, and a
 // configuration panel (variant, addons with required/maxSelect rules,
-// quantity, note). It calls onAdd(line) with the API line shape
+// quantity, note). Clicking an item adds it STRAIGHT to the cart with
+// its default variant and no extras (quick-add); the panel opens only
+// via the Options button, or automatically when the item has a
+// REQUIRED addon group that needs a human choice. Cards show a −/+
+// stepper for the plain cart line so quantities change by mouse.
+// It calls onAdd(line) / onQuickAdd(line) with the API line shape
 // { menuItemId, variantId, addonIds, quantity, note }. Prices shown
 // here are ESTIMATES from the published menu — the server re-prices
 // every line from the database, so the client never decides a price.
@@ -46,7 +51,57 @@ function estimateUnitPrice(item, variantId, addonIds) {
   return unit;
 }
 
-export function MenuLinePicker({ menu, currency, onAdd, disabled = false }) {
+// Default variant for quick-add and for a freshly opened panel: the
+// first variant when the item has variants (e.g. Half for Karahi).
+function defaultVariantId(item) {
+  return item.variants?.[0]?.id ?? null;
+}
+
+function hasRequiredAddonGroup(item) {
+  return (item.addonGroups || []).some((link) => link.group?.required);
+}
+
+// Merge a quick-add line into the matching plain line (same item,
+// same variant, same addon set, no note) by raising its quantity;
+// otherwise append it as a new line. Customised lines (extras or a
+// note) never merge with plain ones. Shared with OrderActions.
+export function addOrMergeLine(lines, line) {
+  const index = (lines || []).findIndex(
+    (current) =>
+      current.menuItemId === line.menuItemId &&
+      (current.variantId ?? null) === (line.variantId ?? null) &&
+      (current.addonIds || []).length === (line.addonIds || []).length &&
+      (current.addonIds || []).every((id) => (line.addonIds || []).includes(id)) &&
+      !current.note &&
+      !line.note,
+  );
+  if (index === -1) {
+    return [...(lines || []), { ...line, key: `${Date.now()}-${(lines || []).length}` }];
+  }
+  return (lines || []).map((current, i) =>
+    i === index
+      ? { ...current, quantity: Math.min(99, current.quantity + line.quantity) }
+      : current,
+  );
+}
+
+const NOTE_PRESETS = ["Less spicy", "Extra spicy", "No onion", "Well done"];
+
+export function MenuLinePicker({
+  menu,
+  currency,
+  onAdd,
+  disabled = false,
+  // Optional quick-add wiring: `lines` is the parent cart/pending
+  // list (drives the card steppers), `onQuickAdd` merges a default
+  // line, `onLineQty`/`onRemoveLine` serve the card steppers. When
+  // they are absent the picker still quick-adds through onAdd, just
+  // without card steppers.
+  lines = [],
+  onQuickAdd,
+  onLineQty,
+  onRemoveLine,
+}) {
   const categories = menu || [];
   const [categoryId, setCategoryId] = useState(categories[0]?.id ?? null);
   const [selectedId, setSelectedId] = useState(null);
@@ -66,13 +121,46 @@ export function MenuLinePicker({ menu, currency, onAdd, disabled = false }) {
   function selectItem(item) {
     if (item.isSoldOut) return;
     setSelectedId(item.id);
-    // Default to the first variant when the item has variants (e.g.
-    // Half for Karahi); items without variants keep variantId null.
-    setVariantId(item.variants?.[0]?.id ?? null);
+    setVariantId(defaultVariantId(item));
     setAddonIds([]);
     setQuantity(1);
     setNote("");
     setError("");
+  }
+
+  // One-click add: the item goes straight into the cart with its
+  // default variant and no extras. Items with a REQUIRED addon group
+  // open the panel instead — that choice has to be made by a person.
+  function quickAdd(item) {
+    if (item.isSoldOut || disabled) return;
+    if (hasRequiredAddonGroup(item)) {
+      selectItem(item);
+      return;
+    }
+    (onQuickAdd || onAdd)({
+      menuItemId: item.id,
+      variantId: defaultVariantId(item),
+      addonIds: [],
+      quantity: 1,
+      note: null,
+    });
+  }
+
+  // The cart line a card stepper controls: the plain (default-config)
+  // line for this item. Customised lines are edited in the cart, not
+  // on the card, so a stepper never changes the wrong line.
+  function plainLineFor(item) {
+    return (lines || []).find(
+      (line) =>
+        line.menuItemId === item.id &&
+        (line.variantId ?? null) === defaultVariantId(item) &&
+        (line.addonIds || []).length === 0 &&
+        !line.note,
+    );
+  }
+
+  function hasOptions(item) {
+    return (item.variants?.length || 0) > 0 || (item.addonGroups?.length || 0) > 0;
   }
 
   function toggleAddon(group, addonId, checked) {
@@ -138,37 +226,90 @@ export function MenuLinePicker({ menu, currency, onAdd, disabled = false }) {
             ))}
           </div>
 
+          <p className="form-note">
+            Click an item to add it straight to the cart — click again to add one more.
+            Use Options only when you need a size, extras, or a kitchen note.
+          </p>
+
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-            {(activeCategory?.items || []).map((item) => (
-              <button
-                key={item.id}
-                type="button"
-                disabled={disabled || item.isSoldOut}
-                onClick={() => selectItem(item)}
-                className={`flex items-start justify-between gap-2 rounded-lg border px-3 py-2 text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50 ${
-                  item.id === selectedId
-                    ? "border-brand-600 bg-brand-50"
-                    : "border-slate-200 bg-white hover:bg-slate-50"
-                }`}
-              >
-                <span className="min-w-0">
-                  <span className="block truncate text-sm font-semibold text-slate-900">
-                    {item.name}
-                  </span>
-                  {item.description ? (
-                    <span className="block truncate text-xs text-slate-500">
-                      {item.description}
+            {(activeCategory?.items || []).map((item) => {
+              const plainLine = plainLineFor(item);
+              const canStep = Boolean(plainLine && onLineQty && onRemoveLine);
+              const isOpen = item.id === selectedId;
+              return (
+                <div
+                  key={item.id}
+                  className={`flex items-stretch justify-between gap-1 rounded-lg border transition-colors ${
+                    isOpen
+                      ? "border-brand-600 bg-brand-50"
+                      : plainLine
+                        ? "border-brand-200 bg-brand-50/50"
+                        : "border-slate-200 bg-white"
+                  } ${item.isSoldOut ? "opacity-50" : ""}`}
+                >
+                  <button
+                    type="button"
+                    disabled={disabled || item.isSoldOut}
+                    onClick={() => quickAdd(item)}
+                    title="Click to add to cart"
+                    className="flex min-w-0 flex-1 items-start justify-between gap-2 px-3 py-2 text-left disabled:cursor-not-allowed"
+                  >
+                    <span className="min-w-0">
+                      <span className="block truncate text-sm font-semibold text-slate-900">
+                        {item.name}
+                      </span>
+                      {item.description ? (
+                        <span className="block truncate text-xs text-slate-500">
+                          {item.description}
+                        </span>
+                      ) : null}
+                      {item.isSoldOut ? <Badge tone="red">Sold out</Badge> : null}
+                    </span>
+                    <span className="shrink-0 text-sm font-semibold text-slate-900">
+                      {formatPKR(item.price, currency)}
+                    </span>
+                  </button>
+                  {canStep ? (
+                    <span className="flex items-center gap-1 pr-1">
+                      <button
+                        type="button"
+                        aria-label="One less"
+                        onClick={() =>
+                          plainLine.quantity <= 1
+                            ? onRemoveLine(plainLine.key)
+                            : onLineQty(plainLine.key, -1)
+                        }
+                        className="btn btn-secondary btn-sm"
+                      >
+                        −
+                      </button>
+                      <span className="w-6 text-center text-sm font-semibold">
+                        {plainLine.quantity}
+                      </span>
+                      <button
+                        type="button"
+                        aria-label="One more"
+                        onClick={() => onLineQty(plainLine.key, 1)}
+                        className="btn btn-secondary btn-sm"
+                      >
+                        +
+                      </button>
                     </span>
                   ) : null}
-                  {item.isSoldOut ? (
-                    <Badge tone="red">Sold out</Badge>
+                  {hasOptions(item) ? (
+                    <button
+                      type="button"
+                      disabled={disabled || item.isSoldOut}
+                      onClick={() => selectItem(item)}
+                      title="Size, extras, kitchen note"
+                      className="shrink-0 self-center rounded-md px-2 py-1 text-xs font-semibold text-slate-600 hover:bg-slate-100 disabled:cursor-not-allowed"
+                    >
+                      Options
+                    </button>
                   ) : null}
-                </span>
-                <span className="shrink-0 text-sm font-semibold text-slate-900">
-                  {formatPKR(item.price, currency)}
-                </span>
-              </button>
-            ))}
+                </div>
+              );
+            })}
           </div>
           {(activeCategory?.items || []).length === 0 ? (
             <p className="form-note">No items in this category.</p>
@@ -312,6 +453,19 @@ export function MenuLinePicker({ menu, currency, onAdd, disabled = false }) {
             </div>
           </div>
 
+          <div className="flex flex-wrap gap-2">
+            {NOTE_PRESETS.map((preset) => (
+              <button
+                key={preset}
+                type="button"
+                onClick={() => setNote((current) => (current === preset ? "" : preset))}
+                className={`pill ${note === preset ? "pill-active" : ""}`}
+              >
+                {preset}
+              </button>
+            ))}
+          </div>
+
           {error ? <p className="form-error">{error}</p> : null}
 
           <button
@@ -333,6 +487,11 @@ const TYPE_OPTIONS = [
   { value: "TAKEAWAY", label: "Takeaway" },
   { value: "DELIVERY", label: "Delivery" },
 ];
+
+// One-click discount presets — no typing needed for the common cases.
+// The number input and reason field stay for anything custom.
+const DISCOUNT_AMOUNTS = [0, 50, 100, 200, 500];
+const DISCOUNT_REASONS = ["Regular customer", "Promo offer", "Staff meal", "Goodwill"];
 
 export default function ManualOrderForm({ menu, tables, settings, initialTableCode }) {
   const router = useRouter();
@@ -363,6 +522,12 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
 
   function addToCart(line) {
     setCart((current) => [...current, { ...line, key: `${Date.now()}-${current.length}` }]);
+  }
+
+  // Quick-add merges into the matching plain line so repeated clicks
+  // raise the quantity instead of stacking duplicate lines.
+  function quickAddToCart(line) {
+    setCart((current) => addOrMergeLine(current, line));
   }
 
   function updateQty(key, delta) {
@@ -568,13 +733,21 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
 
       <section className="card card-pad space-y-3">
         <h2 className="section-title">Menu</h2>
-        <MenuLinePicker menu={menu} currency={currency} onAdd={addToCart} />
+        <MenuLinePicker
+          menu={menu}
+          currency={currency}
+          onAdd={addToCart}
+          lines={cart}
+          onQuickAdd={quickAddToCart}
+          onLineQty={updateQty}
+          onRemoveLine={removeLine}
+        />
       </section>
 
       <section className="card card-pad space-y-3">
         <h2 className="section-title">Cart ({cart.length})</h2>
         {cart.length === 0 ? (
-          <p className="form-note">No items yet — pick items from the menu above.</p>
+          <p className="form-note">No items yet — click any menu item above and it goes straight in here.</p>
         ) : (
           <ul className="space-y-2">
             {cart.map((line) => {
@@ -665,6 +838,18 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
               placeholder="0"
               className="input"
             />
+            <span className="mt-2 flex flex-wrap gap-2">
+              {DISCOUNT_AMOUNTS.map((amount) => (
+                <button
+                  key={amount}
+                  type="button"
+                  onClick={() => setDiscount(String(amount))}
+                  className={`pill ${discount !== "" && Number(discount) === amount ? "pill-active" : ""}`}
+                >
+                  {amount === 0 ? "No discount" : formatPKR(amount, currency)}
+                </button>
+              ))}
+            </span>
           </div>
           <div>
             <label htmlFor="manual-discount-reason" className="label">
@@ -678,13 +863,32 @@ export default function ManualOrderForm({ menu, tables, settings, initialTableCo
               placeholder="e.g. Regular customer"
               className="input"
             />
+            <span className="mt-2 flex flex-wrap gap-2">
+              {DISCOUNT_REASONS.map((reason) => (
+                <button
+                  key={reason}
+                  type="button"
+                  onClick={() => setDiscountReason(reason)}
+                  className={`pill ${discountReason === reason ? "pill-active" : ""}`}
+                >
+                  {reason}
+                </button>
+              ))}
+            </span>
           </div>
         </div>
       </section>
 
-      <button type="submit" disabled={busy || cart.length === 0} className="btn btn-primary btn-lg btn-block">
-        {busy ? "Placing order…" : "Place order"}
-      </button>
+      <div className="space-y-2">
+        <button type="submit" disabled={busy || cart.length === 0} className="btn btn-primary btn-lg btn-block">
+          {busy ? "Placing order…" : "Place order"}
+        </button>
+        {cart.length === 0 ? (
+          <p className="form-note text-center">
+            Place order stays off until the cart has an item — click any menu item above to add one.
+          </p>
+        ) : null}
+      </div>
     </form>
   );
 }

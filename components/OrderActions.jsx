@@ -17,7 +17,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { Badge, Icon } from "@/components/ui";
 import { formatPKR } from "@/lib/format";
-import { MenuLinePicker } from "@/components/ManualOrderForm";
+import { MenuLinePicker, addOrMergeLine } from "@/components/ManualOrderForm";
 
 const PAYMENT_METHODS = [
   { value: "CASH", label: "Cash" },
@@ -60,6 +60,26 @@ export default function OrderActions({ order, menu, riders, currency, paidTotal,
   const [pendingLines, setPendingLines] = useState([]);
   const [addError, setAddError] = useState("");
   const [addBusy, setAddBusy] = useState(false);
+
+  // Same quick-add behaviour as the new-order form: one click adds
+  // the item, repeated clicks raise the quantity of the same line.
+  function quickAddPending(line) {
+    setPendingLines((current) => addOrMergeLine(current, line));
+  }
+
+  function updatePendingQty(key, delta) {
+    setPendingLines((current) =>
+      current.map((line) =>
+        line.key === key
+          ? { ...line, quantity: Math.max(1, Math.min(99, line.quantity + delta)) }
+          : line,
+      ),
+    );
+  }
+
+  function removePendingLine(key) {
+    setPendingLines((current) => current.filter((line) => line.key !== key));
+  }
 
   async function submitAddItems() {
     setAddError("");
@@ -274,6 +294,10 @@ export default function OrderActions({ order, menu, riders, currency, paidTotal,
                 { ...line, key: `${Date.now()}-${current.length}` },
               ])
             }
+            lines={pendingLines}
+            onQuickAdd={quickAddPending}
+            onLineQty={updatePendingQty}
+            onRemoveLine={removePendingLine}
           />
           {pendingLines.length > 0 ? (
             <div className="space-y-2">
@@ -297,23 +321,42 @@ export default function OrderActions({ order, menu, riders, currency, paidTotal,
                       key={line.key}
                       className="flex items-center justify-between gap-2 rounded-lg border border-slate-200 px-3 py-2 text-sm"
                     >
-                      <span>
+                      <span className="min-w-0">
                         {itemName}
-                        {variantName ? ` (${variantName})` : ""} x {line.quantity}
+                        {variantName ? ` (${variantName})` : ""}
                         {line.note ? ` — ${line.note}` : ""}
                       </span>
-                      <button
-                        type="button"
-                        aria-label={`Remove pending line ${index + 1}`}
-                        onClick={() =>
-                          setPendingLines((current) =>
-                            current.filter((item) => item.key !== line.key),
-                          )
-                        }
-                        className="rounded-md p-1 text-red-600 hover:bg-red-50"
-                      >
-                        <Icon name="x" className="h-4 w-4" />
-                      </button>
+                      <span className="flex shrink-0 items-center gap-1">
+                        <button
+                          type="button"
+                          aria-label="One less"
+                          onClick={() =>
+                            line.quantity <= 1
+                              ? removePendingLine(line.key)
+                              : updatePendingQty(line.key, -1)
+                          }
+                          className="btn btn-secondary btn-sm"
+                        >
+                          −
+                        </button>
+                        <span className="w-6 text-center font-semibold">{line.quantity}</span>
+                        <button
+                          type="button"
+                          aria-label="One more"
+                          onClick={() => updatePendingQty(line.key, 1)}
+                          className="btn btn-secondary btn-sm"
+                        >
+                          +
+                        </button>
+                        <button
+                          type="button"
+                          aria-label={`Remove pending line ${index + 1}`}
+                          onClick={() => removePendingLine(line.key)}
+                          className="rounded-md p-1 text-red-600 hover:bg-red-50"
+                        >
+                          <Icon name="x" className="h-4 w-4" />
+                        </button>
+                      </span>
                     </li>
                   );
                 })}
