@@ -1,0 +1,246 @@
+/* SAVE AS: app/globals.css */
+@import "tailwindcss";
+
+@theme {
+  /* System font stack only — no webfonts, so the app renders fast and
+     fully offline-capable on any connection. */
+  --font-sans: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+
+  /* Orange brand scale (used as bg-brand-*, text-brand-*, ...). */
+  --color-brand-50: #fff7ed;
+  --color-brand-100: #ffedd5;
+  --color-brand-200: #fed7aa;
+  --color-brand-300: #fdba74;
+  --color-brand-400: #fb923c;
+  --color-brand-500: #f97316;
+  --color-brand-600: #ea580c;
+  --color-brand-700: #c2410c;
+  --color-brand-800: #9a3412;
+  --color-brand-900: #7c2d12;
+  --color-brand-950: #431407;
+
+  --shadow-card: 0 1px 2px rgb(15 23 42 / 0.06), 0 1px 3px rgb(15 23 42 / 0.08);
+  --shadow-lift: 0 8px 24px rgb(15 23 42 / 0.12), 0 2px 6px rgb(15 23 42 / 0.08);
+}
+
+@layer base {
+  /* overflow-x: clip (not hidden) preserves position: sticky inside. */
+  html,
+  body {
+    overflow-x: clip;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-200);
+    color: var(--color-brand-950);
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-500);
+    outline-offset: 2px;
+  }
+}
+
+@layer components {
+  /* -- Buttons ------------------------------------------------------ */
+  .btn {
+    @apply inline-flex cursor-pointer items-center justify-center gap-2 rounded-lg px-4 py-2 text-sm font-semibold whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-50;
+  }
+  .btn-primary {
+    @apply bg-brand-600 text-white hover:bg-brand-700;
+  }
+  .btn-secondary {
+    @apply border border-slate-300 bg-white text-slate-800 hover:bg-slate-50;
+  }
+  .btn-danger {
+    @apply bg-red-600 text-white hover:bg-red-700;
+  }
+  .btn-danger-outline {
+    @apply border border-red-300 bg-white text-red-700 hover:bg-red-50;
+  }
+  .btn-ghost {
+    @apply text-slate-700 hover:bg-slate-100;
+  }
+  .btn-sm {
+    @apply px-3 py-1.5 text-xs;
+  }
+  .btn-lg {
+    @apply px-5 py-2.5 text-base;
+  }
+  .btn-block {
+    @apply w-full;
+  }
+
+  /* -- Forms -------------------------------------------------------- */
+  .input {
+    @apply w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 placeholder:text-slate-400 focus:border-brand-500 focus:outline-none disabled:bg-slate-50 disabled:text-slate-500;
+  }
+  .label {
+    @apply mb-1 block text-sm font-medium text-slate-700;
+  }
+  .field-error {
+    @apply mt-1 text-xs font-medium text-red-600;
+  }
+  .form-error {
+    @apply rounded-lg border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700;
+  }
+  .form-note {
+    @apply text-xs text-slate-500;
+  }
+
+  /* -- Cards -------------------------------------------------------- */
+  .card {
+    @apply rounded-xl border border-slate-200 bg-white shadow-card;
+  }
+  .card-pad {
+    @apply p-4 sm:p-5;
+  }
+
+  /* -- Badges ------------------------------------------------------- */
+  .badge {
+    @apply inline-flex shrink-0 items-center gap-1 rounded-full px-2 py-0.5 text-xs font-semibold whitespace-nowrap;
+  }
+  .badge-green,
+  .badge-emerald {
+    @apply bg-emerald-100 text-emerald-800;
+  }
+  .badge-amber {
+    @apply bg-amber-100 text-amber-800;
+  }
+  .badge-red {
+    @apply bg-red-100 text-red-800;
+  }
+  .badge-slate {
+    @apply bg-slate-100 text-slate-700;
+  }
+  .badge-blue {
+    @apply bg-blue-100 text-blue-800;
+  }
+  .badge-orange {
+    @apply bg-brand-100 text-brand-800;
+  }
+
+  .link {
+    @apply font-medium text-brand-700 underline-offset-2 hover:underline;
+  }
+
+  /* -- Headings ----------------------------------------------------- */
+  .page-title {
+    @apply text-[1.375rem] leading-tight font-bold tracking-tight text-slate-900 sm:text-2xl;
+  }
+  .page-desc {
+    @apply mt-1 text-sm text-slate-600;
+  }
+  .section-title {
+    @apply text-base font-semibold text-slate-900;
+  }
+  .section-desc {
+    @apply mt-0.5 text-sm text-slate-600;
+  }
+
+  /* -- Icon chips --------------------------------------------------- */
+  .icon-chip {
+    @apply flex h-10 w-10 shrink-0 items-center justify-center rounded-lg;
+  }
+  .icon-chip-sm {
+    @apply h-8 w-8 rounded-md [&_svg]:h-4 [&_svg]:w-4;
+  }
+  .icon-chip-orange {
+    @apply bg-brand-100 text-brand-700;
+  }
+  .icon-chip-green,
+  .icon-chip-emerald {
+    @apply bg-emerald-100 text-emerald-700;
+  }
+  .icon-chip-amber {
+    @apply bg-amber-100 text-amber-700;
+  }
+  .icon-chip-red {
+    @apply bg-red-100 text-red-700;
+  }
+  .icon-chip-slate {
+    @apply bg-slate-100 text-slate-600;
+  }
+  .icon-chip-blue {
+    @apply bg-blue-100 text-blue-700;
+  }
+
+  /* -- Tables ------------------------------------------------------- */
+  .table-wrap {
+    @apply overflow-x-auto rounded-xl border border-slate-200 bg-white;
+  }
+  .tbl {
+    @apply w-full text-sm;
+  }
+  .tbl th {
+    @apply border-b border-slate-200 bg-slate-50 px-3 py-2 text-left text-xs font-semibold tracking-wide text-slate-500 uppercase;
+  }
+  .tbl td {
+    @apply border-b border-slate-100 px-3 py-2.5 text-slate-800;
+  }
+  .tbl tr:last-child td {
+    @apply border-b-0;
+  }
+
+  /* -- Sidebar (dark drawer) ---------------------------------------- */
+  .side-link {
+    @apply relative flex items-center gap-2.5 rounded-lg px-3 py-2 text-sm font-medium text-slate-300 transition-colors hover:bg-white/5 hover:text-white;
+  }
+  .side-link-active {
+    @apply bg-white/10 text-white;
+  }
+  .side-link-active::before {
+    content: "";
+    @apply absolute top-1/2 left-0 h-5 w-1 -translate-y-1/2 rounded-r-full bg-brand-500;
+  }
+  .side-logout {
+    @apply flex w-full cursor-pointer items-center justify-center gap-2 rounded-lg border border-white/15 bg-white/5 px-3 py-2 text-sm font-semibold text-slate-100 transition-colors hover:bg-white/10;
+  }
+
+  /* Thin dark scrollbar for the sidebar nav; overscroll-contain keeps
+     drawer scrolling from chaining to the page behind it. */
+  .sidebar-nav {
+    scrollbar-width: thin;
+    scrollbar-color: rgb(255 255 255 / 0.25) transparent;
+    overscroll-behavior: contain;
+  }
+  .sidebar-nav::-webkit-scrollbar {
+    width: 6px;
+  }
+  .sidebar-nav::-webkit-scrollbar-track {
+    background: transparent;
+  }
+  .sidebar-nav::-webkit-scrollbar-thumb {
+    background: rgb(255 255 255 / 0.25);
+    border-radius: 9999px;
+  }
+
+  /* -- Pills (filters / tabs) --------------------------------------- */
+  .pill {
+    @apply inline-flex cursor-pointer items-center rounded-full border border-slate-300 bg-white px-3 py-1.5 text-sm font-medium whitespace-nowrap text-slate-700 transition-colors hover:bg-slate-50;
+  }
+  .pill-active {
+    @apply border-brand-600 bg-brand-600 text-white hover:bg-brand-700;
+  }
+}
+
+/* -- Receipt ---------------------------------------------------------- */
+/* 80mm thermal receipt. NO global @page rule: @page is document-wide
+   and would change margins for every other printout in the app.
+   Receipt printing sets its own page setup in the print view. */
+.receipt {
+  width: 80mm;
+  max-width: 100%;
+  margin-inline: auto;
+  background: #ffffff;
+  color: #0f172a;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+@media print {
+  .no-print {
+    display: none !important;
+  }
+}
